@@ -277,6 +277,15 @@ class BaseGUI(QWidget):
             function=self.on_propagate_ckbx,
         )
 
+        # Fork note (nninteractive-mps): The napari UI in this fork exposes the
+        # backend's optional faster MPS-native interaction resize path.
+        self.mps_fast_resize_ckbx = setup_checkbox(
+            _layout,
+            "MPS fast resize",
+            True,
+            tooltips="Use a faster MPS-native approximation for interaction downsampling instead of CPU area fallback.",
+        )
+
         for i, shortcut in enumerate(["P", "B", "S", "L"]):
             key = QShortcut(QKeySequence(shortcut), self.interaction_button.buttons[i])
             key.activated.connect(lambda idx=i: self.interaction_button._on_button_pressed(idx))
