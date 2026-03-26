@@ -5,6 +5,16 @@
 This repository contains the napari plugin for nnInteractive. Check out the
 [python backend](https://github.com/MIC-DKFZ/nnInteractive) and [MITK integration](https://www.mitk.org/MITK-nnInteractive) for more.
 
+## Fork-specific changes in this fork
+
+This fork documents the local `nninteractive-mps` changes relative to the upstream napari plugin.
+
+- The plugin now uses the backend's shared device auto-selection, allowing Apple Silicon / MPS runs without manually forcing a device.
+- A new `MPS fast resize` option exposes the backend's faster MPS-native interaction downsampling path.
+- `MPS fast resize` is faster than the CPU `area` fallback, but it is an approximation and does not exactly reproduce `area` interpolation.
+- Napari rectangle prompts are converted to backend half-open intervals, and collapsed axes are expanded to one voxel to avoid empty bounding boxes in 2D views.
+- CPU fallback behavior is unchanged when neither MPS nor CUDA is available, but the MPS-aware warnings and options are now surfaced explicitly.
+
 ## What is nnInteractive?
 
 > Isensee, F.\*, Rokuss, M.\*, Krämer, L.\*, Dinkelacker, S., Ravindran, A., Stritzke, F., Hamm, B., Wald, T., Langenberg, M., Ulrich, C., Deissler, J., Floca, R., & Maier-Hein, K. (2025). nnInteractive: Redefining 3D Promptable Segmentation. https://arxiv.org/abs/2503.08373 \
