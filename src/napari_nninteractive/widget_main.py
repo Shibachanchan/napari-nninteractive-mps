@@ -9,6 +9,7 @@ import torch
 from batchgenerators.utilities.file_and_folder_operations import join, load_json
 from napari.utils.notifications import show_warning
 from napari.viewer import Viewer
+from nnInteractive.utils.device import get_preferred_torch_device
 from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 from qtpy.QtWidgets import QWidget
 
@@ -55,26 +56,28 @@ class nnInteractiveWidget(LayerControls):
                 "nnInteractive.inference",
             )
 
-            # CPU Fallback if noc Cuda is available
-            if torch.cuda.is_available():
-                device = torch.device("cuda:0")
-            else:
+            # Fork note (nninteractive-mps): The plugin now uses the backend's
+            # shared device auto-selection so local runs can prefer MPS, CUDA,
+            # or CPU without hard-coding a device here.
+            device = get_preferred_torch_device()
+            if device.type == "cpu":
                 show_warning(
-                    "Cuda is not available. Using CPU instead. This will result in longer runtimes and additionally auto-zoom will be disabled for runtime reasons"
+                    "Neither MPS nor CUDA is available. Using CPU instead. This will result in longer runtimes and additionally auto-zoom will be disabled for runtime reasons"
                 )
 
-                device = torch.device("cpu")
                 self.propagate_ckbx.setChecked(False)
 
-            # device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
-
             # Initialize the Session
+            # Fork note (nninteractive-mps): This fork threads the UI's
+            # `MPS fast resize` toggle into the backend via
+            # `mps_interaction_resize_mode`.
             self.session = inference_class(
                 device=device,  # can also be cpu or mps. CPU not recommended
                 use_torch_compile=False,
                 torch_n_threads=os.cpu_count(),
                 verbose=False,
                 do_autozoom=self.propagate_ckbx.isChecked(),
+                mps_interaction_resize_mode="mps_fast" if self.mps_fast_resize_ckbx.isChecked() else "cpu_area",
             )
 
             self.session.initialize_from_trained_model_folder(
@@ -170,6 +173,10 @@ class nnInteractiveWidget(LayerControls):
                 self._viewer.layers[self.scribble_layer_name].brush_size = self._scribble_brush_size
 
     # Inference Behaviour
+    # Fork note (nninteractive-mps): This helper is fork-specific. Napari
+    # rectangles are normalized to backend half-open interval semantics, and a
+    # collapsed axis is expanded to one voxel so 2D views do not create empty
+    # bounding boxes.
     def _bbox_to_half_open_intervals(self, data: np.ndarray) -> list[list[float]]:
         """Convert a napari rectangle to backend-style half-open intervals."""
         mins = np.min(data, axis=0).astype(float)
