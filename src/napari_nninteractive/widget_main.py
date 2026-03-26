@@ -29,6 +29,29 @@ class nnInteractiveWidget(LayerControls):
         super().__init__(viewer, parent)
         self.session = None
         self._viewer.dims.events.order.connect(self.on_axis_change)
+        # Fork note (nninteractive-mps): Sync MPS-specific controls with the
+        # fork-specific CPU-only override after the full widget tree exists.
+        self._sync_device_mode_controls(reset_session=False)
+
+    # Fork note (nninteractive-mps): The napari UI can explicitly override the
+    # backend auto-selection and force CPU execution for the next session init.
+    def _resolve_session_device(self) -> torch.device:
+        requested_device = "cpu" if self.cpu_only_ckbx.isChecked() else None
+        return get_preferred_torch_device(requested_device)
+
+    # Fork note (nninteractive-mps): CPU-only mode disables the MPS-only resize
+    # option in the UI and requires a full session rebuild instead of live migration.
+    def _sync_device_mode_controls(self, reset_session: bool) -> None:
+        self.mps_fast_resize_ckbx.setEnabled(not self.cpu_only_ckbx.isChecked())
+        if reset_session:
+            self.on_model_selected()
+
+    # Fork note (nninteractive-mps): CPU-only mode makes the MPS-specific resize
+    # toggle irrelevant, so the backend always receives the CPU-compatible mode.
+    def _get_interaction_resize_mode(self) -> str:
+        if self.cpu_only_ckbx.isChecked():
+            return "cpu_area"
+        return "mps_fast" if self.mps_fast_resize_ckbx.isChecked() else "cpu_area"
 
     # Event Handlers
     def on_init(self, *args, **kwargs):
@@ -59,11 +82,18 @@ class nnInteractiveWidget(LayerControls):
             # Fork note (nninteractive-mps): The plugin now uses the backend's
             # shared device auto-selection so local runs can prefer MPS, CUDA,
             # or CPU without hard-coding a device here.
-            device = get_preferred_torch_device()
+            device = self._resolve_session_device()
             if device.type == "cpu":
-                show_warning(
-                    "Neither MPS nor CUDA is available. Using CPU instead. This will result in longer runtimes and additionally auto-zoom will be disabled for runtime reasons"
-                )
+                # Fork note (nninteractive-mps): Forced CPU mode gets its own warning
+                # so users can distinguish an explicit CPU choice from automatic CPU fallback.
+                if self.cpu_only_ckbx.isChecked():
+                    show_warning(
+                        "CPU only mode selected. Using CPU even if MPS or CUDA is available. This will result in longer runtimes and auto-zoom will be disabled for runtime reasons"
+                    )
+                else:
+                    show_warning(
+                        "Neither MPS nor CUDA is available. Using CPU instead. This will result in longer runtimes and additionally auto-zoom will be disabled for runtime reasons"
+                    )
 
                 self.propagate_ckbx.setChecked(False)
 
@@ -77,7 +107,7 @@ class nnInteractiveWidget(LayerControls):
                 torch_n_threads=os.cpu_count(),
                 verbose=False,
                 do_autozoom=self.propagate_ckbx.isChecked(),
-                mps_interaction_resize_mode="mps_fast" if self.mps_fast_resize_ckbx.isChecked() else "cpu_area",
+                mps_interaction_resize_mode=self._get_interaction_resize_mode(),
             )
 
             self.session.initialize_from_trained_model_folder(
@@ -112,6 +142,14 @@ class nnInteractiveWidget(LayerControls):
         """Reset the current session completely"""
         super().on_model_selected()
         self.session = None
+        # Fork note (nninteractive-mps): Keep the fork-specific device controls
+        # synchronized after any reset that invalidates the current session.
+        self._sync_device_mode_controls(reset_session=False)
+
+    # Fork note (nninteractive-mps): Toggling CPU-only mode invalidates the
+    # current session because device changes are applied only on reinitialization.
+    def on_cpu_only_ckbx(self, *args, **kwargs):
+        self._sync_device_mode_controls(reset_session=True)
 
     def on_image_selected(self):
         """Reset the current sessions interaction but keep the session itself"""
