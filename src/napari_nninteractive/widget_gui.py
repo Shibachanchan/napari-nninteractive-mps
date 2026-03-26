@@ -140,6 +140,16 @@ class BaseGUI(QWidget):
         )
         btn.setFixedWidth(30)
 
+        # Fork note (nninteractive-mps): This fork adds a UI-level CPU override so
+        # users can force local inference onto CPU even when MPS or CUDA is available.
+        self.cpu_only_ckbx = setup_checkbox(
+            _layout,
+            "CPU only",
+            False,
+            function=self.on_cpu_only_ckbx,
+            tooltips="Force CPU execution even if MPS or CUDA is available.",
+        )
+
         _group_box.setLayout(_layout)
         return _group_box
 
@@ -358,6 +368,11 @@ class BaseGUI(QWidget):
         """When a new model is selected reset layers and session (cfg + gui)"""
         self._clear_layers()
         self._unlock_session()
+
+    # Fork note (nninteractive-mps): Subclasses override this to handle the
+    # fork-specific CPU-only device mode toggle.
+    def on_cpu_only_ckbx(self, *args, **kwargs):
+        print("on_cpu_only_ckbx", *args, **kwargs)
 
     def on_reset_interactions(self):
         """Reset only the current interaction"""
